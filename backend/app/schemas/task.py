@@ -23,8 +23,6 @@ class TaskCreate(BaseModel):
     title: str
     description: str
     test_cases: List[TestCaseCreate]  # Вместо test_input/output теперь список тестов
-    test_input: Optional[str] = None
-    test_output: str
     course_id: Optional[int] = None
 
 class TaskResponse(BaseModel):
@@ -32,8 +30,6 @@ class TaskResponse(BaseModel):
     title: str
     description: str
     test_cases: List[TestCaseResponse] # При возврате задачи тоже отдаем список тестов
-    test_input: Optional[str] = None
-    test_output: str
     course_id: Optional[int] = None
     created_at: datetime
 

@@ -35,23 +35,18 @@ class Task(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
     test_cases = relationship("TestCase", back_populates="task", cascade="all, delete-orphan")
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class TestCase(Base):
     __tablename__ = "test_cases"
+
     id = Column(Integer, primary_key=True, index=True)
     task_id = Column(Integer, ForeignKey("tasks.id"), index=True)
     input_data = Column(Text, default="")
     expected_output = Column(Text)
     is_hidden = Column(Boolean, default=False)
     task = relationship("Task", back_populates="test_cases")
-
-
-    test_input = Column(Text, nullable=True)  # Что подаем в stdin (пока не используем, но пригодится)
-    test_output = Column(Text, nullable=False) # Эталонный ответ
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
 
 class Course(Base):
     __tablename__ = "courses"
