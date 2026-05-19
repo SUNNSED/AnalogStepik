@@ -23,6 +23,11 @@ async def get_current_user(
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
+        if payload.get("type", "access") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid token type",
+            )
         user_id: str = payload.get("sub")
         if user_id is None:
             raise HTTPException(
