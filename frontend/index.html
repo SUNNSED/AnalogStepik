@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AnalogStepik</title>
+    <title>AnalogStepik — ГУАП</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="auth-layout" id="authLayout">
       <main class="auth-panel">
         <section class="brand-pane" aria-label="AnalogStepik">
-          <div class="brand-mark">AS</div>
+          <div class="brand-mark">ГУАП</div>
           <h1>AnalogStepik</h1>
-          <p>Курсы, задачи, проверка решений и личная статистика в одном рабочем интерфейсе.</p>
+          <p>Интеллектуальная образовательная среда СпбГУАП. Курсы, задачи и проверка решений.</p>
           <div class="api-control">
             <label for="apiBaseAuth">API</label>
             <input id="apiBaseAuth" type="url" autocomplete="off" />
@@ -55,7 +55,7 @@
     <div class="app-shell is-hidden" id="appShell">
       <aside class="sidebar">
         <div class="sidebar-head">
-          <div class="brand-mark">AS</div>
+          <div class="brand-mark">ГУАП</div>
           <div>
             <strong>AnalogStepik</strong>
             <span id="roleLabel">ученик</span>
@@ -65,7 +65,6 @@
         <nav class="nav-list" aria-label="Основные разделы">
           <button class="nav-item is-active" type="button" data-view="dashboard">Обзор</button>
           <button class="nav-item" type="button" data-view="courses">Курсы</button>
-          <button class="nav-item" type="button" data-view="learning">Моё обучение</button>
           <button class="nav-item" type="button" data-view="tasks">Задачи</button>
           <button class="nav-item" type="button" data-view="submissions">Отправки</button>
           <button class="nav-item" type="button" data-view="teacher" data-teacher-only>Кабинет автора</button>
@@ -156,15 +155,19 @@
             <div class="split-layout">
               <section class="panel">
                 <div class="panel-head">
-                  <h3>Все курсы</h3>
+                  <h3>Курсы</h3>
                   <button class="soft-btn" id="loadCoursesButton" type="button">Обновить</button>
+                </div>
+                <div class="tabs" role="tablist">
+                  <button class="tab is-active" type="button" data-course-filter="all">Все</button>
+                  <button class="tab" type="button" data-course-filter="my">Мои</button>
                 </div>
                 <div id="coursesList" class="item-list"></div>
               </section>
 
               <section class="panel detail-panel">
                 <div class="panel-head">
-                  <h3>Курс</h3>
+                  <h3>Детали</h3>
                   <div class="button-row">
                     <button class="soft-btn" id="enrollButton" type="button">Записаться</button>
                     <button class="ghost-btn" id="unenrollButton" type="button">Отписаться</button>
@@ -173,16 +176,6 @@
                 <div id="courseDetail" class="detail-box muted">Выбери курс из списка.</div>
               </section>
             </div>
-          </section>
-
-          <section class="view" id="view-learning">
-            <section class="panel">
-              <div class="panel-head">
-                <h3>Мои курсы</h3>
-                <button class="soft-btn" id="loadMyCoursesButton" type="button">Обновить</button>
-              </div>
-              <div id="myCoursesList" class="card-grid"></div>
-            </section>
           </section>
 
           <section class="view" id="view-tasks">

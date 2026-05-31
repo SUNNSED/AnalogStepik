@@ -29,7 +29,6 @@ const ROUTES = [
 const viewMeta = {
   dashboard: ["Обзор", "Рабочая панель"],
   courses: ["Курсы", "Каталог и запись"],
-  learning: ["Моё обучение", "Активные курсы"],
   tasks: ["Задачи", "Условия и отправка кода"],
   submissions: ["Отправки", "Статусы проверок"],
   teacher: ["Кабинет автора", "Курсы и задачи"],
@@ -45,11 +44,11 @@ const state = {
   profile: null,
   stats: null,
   courses: [],
-  myCourses: [],
   createdCourses: [],
   tasks: [],
   users: [],
   progressReports: [],
+  courseFilter: "all",
   selectedCourse: null,
   selectedTask: null,
   selectedTaskCourseId: "",
@@ -256,8 +255,12 @@ function renderStats() {
 }
 
 function renderCourses() {
-  $("#coursesList").innerHTML = state.courses.map((course) => `
-    <article class="list-item">
+  const filtered = state.courseFilter === "my"
+    ? state.courses.filter((c) => c.is_enrolled)
+    : state.courses;
+
+  $("#coursesList").innerHTML = filtered.map((course) => `
+    <article class="list-item" data-open-course="${course.id}" tabindex="0" role="button">
       <div class="list-item-head">
         <div>
           <h4>${escapeHtml(course.title)}</h4>
@@ -268,24 +271,9 @@ function renderCourses() {
       <div class="meta-row">
         <span class="badge">ID ${course.id}</span>
         <span class="badge">teacher ${course.teacher_id}</span>
-        <button class="soft-btn" type="button" data-open-course="${course.id}">Открыть</button>
       </div>
     </article>
-  `).join("") || empty("Курсов пока нет.");
-}
-
-function renderMyCourses() {
-  $("#myCoursesList").innerHTML = state.myCourses.map((course) => `
-    <article class="course-card">
-      <div class="meta-row">
-        <span class="badge ok">записан</span>
-        <span class="badge">ID ${course.id}</span>
-      </div>
-      <h4>${escapeHtml(course.title)}</h4>
-      <p>${escapeHtml(course.description)}</p>
-      <button class="soft-btn" type="button" data-open-course="${course.id}" data-view-target="courses">Открыть</button>
-    </article>
-  `).join("") || empty("Ты пока не записан на курсы.");
+  `).join("") || empty(state.courseFilter === "my" ? "Ты пока не записан на курсы." : "Курсов пока нет.");
 }
 
 function renderCreatedCourses() {
@@ -324,7 +312,7 @@ function getTaskFilterCourses() {
 
   if (isAdmin) return state.courses;
   if (isTeacher) return state.createdCourses;
-  return state.myCourses.length ? state.myCourses : state.courses.filter((course) => course.is_enrolled);
+  return state.courses.filter((course) => course.is_enrolled);
 }
 
 function renderTaskCourseFilter() {
@@ -665,12 +653,6 @@ async function loadCourses() {
   renderTaskCourseFilter();
 }
 
-async function loadMyCourses() {
-  state.myCourses = await api("/courses/my");
-  renderMyCourses();
-  renderTaskCourseFilter();
-}
-
 async function loadCreatedCourses() {
   try {
     state.createdCourses = await api("/courses/my/created");
@@ -797,7 +779,7 @@ function switchView(name) {
 async function loadInitialData() {
   renderSession();
   try {
-    await Promise.all([loadProfile(), loadStats(), loadCourses(), loadMyCourses(), loadTasks()]);
+    await Promise.all([loadProfile(), loadStats(), loadCourses(), loadTasks()]);
     await loadCreatedCourses();
   } catch (error) {
     showToast(error.message);
@@ -816,8 +798,16 @@ function wireEvents() {
     });
   });
 
-  $$(".nav-item").forEach((button) => {
+  $$("[data-view]").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
+  });
+
+  $$("[data-course-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.courseFilter = button.dataset.courseFilter;
+      $$("[data-course-filter]").forEach((item) => item.classList.toggle("is-active", item === button));
+      renderCourses();
+    });
   });
 
   $("#submissionForm textarea[name='code_text']").addEventListener("keydown", handleCodeEditorTab);
@@ -906,7 +896,6 @@ function wireEvents() {
   }, "API отвечает"));
 
   $("#loadCoursesButton").addEventListener("click", () => runAction(loadCourses, "Курсы обновлены"));
-  $("#loadMyCoursesButton").addEventListener("click", () => runAction(loadMyCourses, "Мои курсы обновлены"));
   $("#loadCreatedCoursesButton").addEventListener("click", () => runAction(loadCreatedCourses, "Курсы автора обновлены"));
   $("#loadTasksButton").addEventListener("click", () => runAction(loadTasks, "Задачи обновлены"));
   $("#taskCourseFilter").addEventListener("change", (event) => runAction(async () => {
@@ -921,14 +910,14 @@ function wireEvents() {
   $("#enrollButton").addEventListener("click", () => runAction(async () => {
     if (!state.selectedCourse) throw new Error("Сначала выбери курс");
     await api(`/courses/${state.selectedCourse.id}/enroll`, { method: "POST" });
-    await Promise.all([openCourse(state.selectedCourse.id), loadCourses(), loadMyCourses(), loadStats()]);
+    await Promise.all([openCourse(state.selectedCourse.id), loadCourses(), loadStats()]);
     await loadTasks();
   }, "Запись выполнена"));
 
   $("#unenrollButton").addEventListener("click", () => runAction(async () => {
     if (!state.selectedCourse) throw new Error("Сначала выбери курс");
     await api(`/courses/${state.selectedCourse.id}/unenroll`, { method: "POST" });
-    await Promise.all([openCourse(state.selectedCourse.id), loadCourses(), loadMyCourses(), loadStats()]);
+    await Promise.all([openCourse(state.selectedCourse.id), loadCourses(), loadStats()]);
     await loadTasks();
   }, "Запись отменена"));
 
@@ -1212,7 +1201,6 @@ function init() {
   renderProfile();
   renderStats();
   renderCourses();
-  renderMyCourses();
   renderCreatedCourses();
   renderCourseDetail();
   renderTasks();
