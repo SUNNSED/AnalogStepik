@@ -49,9 +49,17 @@ async def get_current_user(
     return user
 
 async def get_current_teacher(current_user: User = Depends(get_current_user)):
-    if not current_user.is_teacher:
+    if not current_user.is_teacher and not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a teacher",
+            detail="You are not a teacher or admin",
+        )
+    return current_user
+
+async def get_current_admin(current_user: User = Depends(get_current_user)):
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not an admin",
         )
     return current_user

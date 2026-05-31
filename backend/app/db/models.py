@@ -13,6 +13,10 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     is_teacher = Column(Boolean, default=False)
+    is_admin = Column(Boolean, default=False)
+    first_name = Column(String(100), nullable=True)
+    last_name = Column(String(100), nullable=True)
+    group_number = Column(String(50), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 #Класс для проверки заданий

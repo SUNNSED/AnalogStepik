@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
+from sqlalchemy.orm import selectinload
 from typing import List
 
 from app.db.database import get_db
@@ -69,7 +70,7 @@ async def get_my_created_courses(
     """Курсы, созданные текущим пользователем (как учитель)"""
 
     result = await db.execute(
-        select(Course).where(Course.teacher_id == current_user.id)
+        select(Course) if current_user.is_admin else select(Course).where(Course.teacher_id == current_user.id)
     )
     return result.scalars().all()
 
@@ -91,7 +92,9 @@ async def get_course(
 
     # Получаем задачи курса
     tasks_result = await db.execute(
-        select(Task).where(Task.course_id == course_id)
+        select(Task)
+        .where(Task.course_id == course_id)
+        .options(selectinload(Task.test_cases))
     )
     course.tasks = tasks_result.scalars().all()
 
@@ -206,7 +209,7 @@ async def update_course(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    if course.teacher_id != current_user.id:
+    if course.teacher_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Only author can update")
 
     if course_in.title is not None:
@@ -234,7 +237,7 @@ async def delete_course(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    if course.teacher_id != current_user.id:
+    if course.teacher_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Only author can delete")
 
     await db.delete(course)

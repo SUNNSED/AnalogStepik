@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AnalogStepik</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="auth-layout" id="authLayout">
+      <main class="auth-panel">
+        <section class="brand-pane" aria-label="AnalogStepik">
+          <div class="brand-mark">AS</div>
+          <h1>AnalogStepik</h1>
+          <p>Курсы, задачи, проверка решений и личная статистика в одном рабочем интерфейсе.</p>
+          <div class="api-control">
+            <label for="apiBaseAuth">API</label>
+            <input id="apiBaseAuth" type="url" autocomplete="off" />
+          </div>
+        </section>
+
+        <section class="auth-card" aria-label="Вход">
+          <div class="tabs" role="tablist">
+            <button class="tab is-active" type="button" data-auth-tab="login">Вход</button>
+            <button class="tab" type="button" data-auth-tab="register">Регистрация</button>
+          </div>
+
+          <form id="loginForm" class="stack auth-form" autocomplete="on">
+            <label>
+              Email
+              <input name="email" type="email" required placeholder="student@example.com" />
+            </label>
+            <label>
+              Пароль
+              <input name="password" type="password" required minlength="6" placeholder="••••••••" />
+            </label>
+            <button class="primary-btn" type="submit">Войти</button>
+          </form>
+
+          <form id="registerForm" class="stack auth-form is-hidden" autocomplete="on">
+            <label>
+              Email
+              <input name="email" type="email" required placeholder="student@example.com" />
+            </label>
+            <label>
+              Пароль
+              <input name="password" type="password" required minlength="6" placeholder="Минимум 6 символов" />
+            </label>
+            <button class="primary-btn" type="submit">Создать аккаунт</button>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <div class="app-shell is-hidden" id="appShell">
+      <aside class="sidebar">
+        <div class="sidebar-head">
+          <div class="brand-mark">AS</div>
+          <div>
+            <strong>AnalogStepik</strong>
+            <span id="roleLabel">ученик</span>
+          </div>
+        </div>
+
+        <nav class="nav-list" aria-label="Основные разделы">
+          <button class="nav-item is-active" type="button" data-view="dashboard">Обзор</button>
+          <button class="nav-item" type="button" data-view="courses">Курсы</button>
+          <button class="nav-item" type="button" data-view="learning">Моё обучение</button>
+          <button class="nav-item" type="button" data-view="tasks">Задачи</button>
+          <button class="nav-item" type="button" data-view="submissions">Отправки</button>
+          <button class="nav-item" type="button" data-view="teacher" data-teacher-only>Кабинет автора</button>
+          <button class="nav-item" type="button" data-view="progress" data-teacher-only>Прогресс</button>
+          <button class="nav-item" type="button" data-view="users" data-admin-only>Пользователи</button>
+          <button class="nav-item" type="button" data-view="routes" data-admin-only>API</button>
+        </nav>
+
+        <div class="sidebar-foot">
+          <div class="api-control compact">
+            <label for="apiBaseApp">API</label>
+            <input id="apiBaseApp" type="url" autocomplete="off" />
+          </div>
+          <button class="ghost-btn full" id="logoutButton" type="button">Выйти</button>
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="viewEyebrow">Обзор</p>
+            <h2 id="viewTitle">Рабочая панель</h2>
+          </div>
+          <div class="session-chip" id="sessionChip">-</div>
+        </header>
+
+        <main class="content">
+          <section class="view is-active" id="view-dashboard">
+            <div class="stats-grid">
+              <article class="stat-card">
+                <span>Отправок</span>
+                <strong id="statTotal">0</strong>
+              </article>
+              <article class="stat-card">
+                <span>Правильных</span>
+                <strong id="statCorrect">0</strong>
+              </article>
+              <article class="stat-card">
+                <span>Точность</span>
+                <strong id="statAccuracy">0%</strong>
+              </article>
+              <article class="stat-card">
+                <span>Курсов</span>
+                <strong id="statCourses">0</strong>
+              </article>
+            </div>
+
+            <div class="two-column">
+              <section class="panel">
+                <div class="panel-head">
+                  <h3>Профиль</h3>
+                  <button class="soft-btn" id="refreshProfileButton" type="button">Обновить</button>
+                </div>
+                <div id="profileBox" class="profile-box"></div>
+                <form id="profileForm" class="stack profile-form">
+                  <div class="form-grid three">
+                    <label>
+                      Имя
+                      <input name="first_name" type="text" maxlength="100" placeholder="Иван" />
+                    </label>
+                    <label>
+                      Фамилия
+                      <input name="last_name" type="text" maxlength="100" placeholder="Иванов" />
+                    </label>
+                    <label>
+                      Группа
+                      <input name="group_number" type="text" maxlength="50" placeholder="БИВТ-22-1" />
+                    </label>
+                  </div>
+                  <button class="soft-btn" type="submit">Сохранить профиль</button>
+                </form>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <h3>Сессия</h3>
+                  <button class="soft-btn" id="refreshTokenButton" type="button">Refresh</button>
+                </div>
+                <div class="stack">
+                  <button class="ghost-btn" id="healthButton" type="button">Проверить API</button>
+                  <pre class="result-box" id="healthResult">-</pre>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" id="view-courses">
+            <div class="split-layout">
+              <section class="panel">
+                <div class="panel-head">
+                  <h3>Все курсы</h3>
+                  <button class="soft-btn" id="loadCoursesButton" type="button">Обновить</button>
+                </div>
+                <div id="coursesList" class="item-list"></div>
+              </section>
+
+              <section class="panel detail-panel">
+                <div class="panel-head">
+                  <h3>Курс</h3>
+                  <div class="button-row">
+                    <button class="soft-btn" id="enrollButton" type="button">Записаться</button>
+                    <button class="ghost-btn" id="unenrollButton" type="button">Отписаться</button>
+                  </div>
+                </div>
+                <div id="courseDetail" class="detail-box muted">Выбери курс из списка.</div>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" id="view-learning">
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Мои курсы</h3>
+                <button class="soft-btn" id="loadMyCoursesButton" type="button">Обновить</button>
+              </div>
+              <div id="myCoursesList" class="card-grid"></div>
+            </section>
+          </section>
+
+          <section class="view" id="view-tasks">
+            <div class="split-layout tasks-layout">
+              <section class="panel tasks-list-panel">
+                <div class="panel-head">
+                  <h3>Задачи</h3>
+                  <button class="soft-btn" id="loadTasksButton" type="button">Обновить</button>
+                </div>
+                <label class="inline-field task-course-picker">
+                  Курс
+                  <select id="taskCourseFilter">
+                    <option value="">Сначала выбери курс</option>
+                  </select>
+                </label>
+                <div id="tasksList" class="item-list task-list-scroll"></div>
+              </section>
+
+              <section class="panel detail-panel">
+                <div class="panel-head">
+                  <h3>Решение</h3>
+                  <button class="ghost-btn" id="loadTaskByIdButton" type="button" data-teacher-only>Открыть по ID</button>
+                </div>
+                <label class="inline-field" data-teacher-only>
+                  ID задачи
+                  <input id="taskLookupId" type="number" min="1" placeholder="1" />
+                </label>
+                <div id="taskDetail" class="detail-box muted">Выбери задачу.</div>
+                <form id="submissionForm" class="stack submit-form">
+                  <input name="task_id" type="hidden" />
+                  <label>
+                    Язык
+                    <select name="language">
+                      <option value="python">python</option>
+                    </select>
+                  </label>
+                  <label>
+                    Код
+                    <textarea name="code_text" rows="11" spellcheck="false">print("Hello, AnalogStepik!")</textarea>
+                  </label>
+                  <button class="primary-btn" type="submit">Отправить решение</button>
+                </form>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" id="view-submissions">
+            <div class="two-column">
+              <section class="panel">
+                <div class="panel-head">
+                  <h3>Проверить отправку</h3>
+                  <button class="soft-btn" id="loadSubmissionButton" type="button">Получить</button>
+                </div>
+                <label class="inline-field">
+                  ID отправки
+                  <input id="submissionLookupId" type="number" min="1" placeholder="1" />
+                </label>
+                <pre class="result-box tall" id="submissionResult">-</pre>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <h3>Последние в браузере</h3>
+                  <button class="ghost-btn" id="clearLocalSubmissionsButton" type="button">Очистить</button>
+                </div>
+                <div id="localSubmissionsList" class="item-list"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" id="view-teacher">
+            <div class="two-column">
+              <section class="panel">
+                <div class="panel-head">
+                  <h3>Курсы автора</h3>
+                  <button class="soft-btn" id="loadCreatedCoursesButton" type="button">Обновить</button>
+                </div>
+                <div id="createdCoursesList" class="item-list"></div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <h3>Редактор курса</h3>
+                </div>
+                <form id="courseForm" class="stack">
+                  <label>
+                    ID для обновления или удаления
+                    <input name="course_id" type="number" min="1" placeholder="Оставь пустым для создания" />
+                  </label>
+                  <label>
+                    Название
+                    <input name="title" type="text" required placeholder="Основы Python" />
+                  </label>
+                  <label>
+                    Описание
+                    <textarea name="description" rows="4" required placeholder="Короткое описание курса"></textarea>
+                  </label>
+                  <div class="button-row">
+                    <button class="primary-btn" type="submit" data-course-action="create">Создать</button>
+                    <button class="soft-btn" type="submit" data-course-action="update">Сохранить</button>
+                    <button class="danger-btn" type="submit" data-course-action="delete" formnovalidate>Удалить</button>
+                  </div>
+                </form>
+              </section>
+            </div>
+
+            <section class="panel task-panel">
+              <div class="panel-head">
+                <h3>Новая задача</h3>
+                <button class="ghost-btn" id="addTestCaseButton" type="button">Добавить тест</button>
+              </div>
+              <form id="taskForm" class="stack">
+                <div class="form-grid">
+                  <label>
+                    Название
+                    <input name="title" type="text" required placeholder="Сумма чисел" />
+                  </label>
+                  <label>
+                    Курс
+                    <select name="course_id" id="taskCourseSelect">
+                      <option value="">Без курса</option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  Условие
+                  <textarea name="description" rows="5" required placeholder="Опиши входные данные, выходные данные и пример."></textarea>
+                </label>
+                <div id="testCasesEditor" class="testcase-list"></div>
+                <button class="primary-btn" type="submit">Создать задачу</button>
+              </form>
+            </section>
+          </section>
+
+          <section class="view" id="view-users">
+            <div class="split-layout">
+              <section class="panel">
+                <div class="panel-head">
+                  <h3>Пользователи</h3>
+                  <button class="soft-btn" id="loadUsersButton" type="button">Найти</button>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    Поиск
+                    <input id="userSearchQuery" type="search" placeholder="email, имя или фамилия" />
+                  </label>
+                  <label>
+                    Группа
+                    <input id="userSearchGroup" type="text" placeholder="БИВТ-22-1" />
+                  </label>
+                </div>
+                <div id="usersList" class="item-list"></div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head">
+                  <h3>Профиль по ID</h3>
+                  <button class="soft-btn" id="loadUserButton" type="button">Открыть</button>
+                </div>
+                <label class="inline-field">
+                  ID пользователя
+                  <input id="userLookupId" type="number" min="1" placeholder="1" />
+                </label>
+                <div id="userProfileResult" class="detail-box muted">Профиль появится здесь.</div>
+              </section>
+            </div>
+          </section>
+
+          <section class="view" id="view-progress">
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Прогресс учеников</h3>
+                <button class="soft-btn" id="loadProgressButton" type="button">Найти</button>
+              </div>
+              <div class="form-grid three">
+                <label>
+                  Ученик
+                  <input id="progressSearchQuery" type="search" placeholder="email, имя или фамилия" />
+                </label>
+                <label>
+                  Группа
+                  <input id="progressSearchGroup" type="text" placeholder="БИВТ-22-1" />
+                </label>
+                <label>
+                  ID ученика
+                  <input id="progressStudentId" type="number" min="1" placeholder="точный ID" />
+                </label>
+              </div>
+              <div id="progressList" class="progress-list"></div>
+            </section>
+          </section>
+
+          <section class="view" id="view-routes">
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Роуты backend</h3>
+                <button class="soft-btn" id="copyRoutesButton" type="button">Скопировать</button>
+              </div>
+              <div id="routesMap" class="routes-grid"></div>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

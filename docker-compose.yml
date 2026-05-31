@@ -36,6 +36,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/stepik_db
       - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       - db
       - rabbitmq
@@ -54,12 +55,23 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/stepik_db
       - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       - db
       - rabbitmq
     volumes:
       - ./backend:/app
       - /var/run/docker.sock:/var/run/docker.sock
+
+  frontend:
+    image: nginx:1.27-alpine
+    restart: always
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - api
 
 volumes:
   pgdata:
