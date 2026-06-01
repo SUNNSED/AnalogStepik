@@ -73,13 +73,7 @@
           <button class="nav-item" type="button" data-view="routes" data-admin-only>API</button>
         </nav>
 
-        <div class="sidebar-foot">
-          <div class="api-control compact">
-            <label for="apiBaseApp">API</label>
-            <input id="apiBaseApp" type="url" autocomplete="off" />
-          </div>
-          <button class="ghost-btn full" id="logoutButton" type="button">Выйти</button>
-        </div>
+        <div id="holo-container"></div>
       </aside>
 
       <div class="workspace">
@@ -88,7 +82,10 @@
             <p class="eyebrow" id="viewEyebrow">Обзор</p>
             <h2 id="viewTitle">Рабочая панель</h2>
           </div>
-          <div class="session-chip" id="sessionChip">-</div>
+          <div style="display: flex; gap: 16px; align-items: center;">
+            <button class="ghost-btn" id="themeToggle" type="button">СВЕТ/ТЬМА</button>
+            <div class="session-chip" id="sessionChip">-</div>
+          </div>
         </header>
 
         <main class="content">
@@ -134,11 +131,14 @@
                       <input name="group_number" type="text" maxlength="50" placeholder="БИВТ-22-1" />
                     </label>
                   </div>
-                  <button class="soft-btn" type="submit">Сохранить профиль</button>
+                  <div class="button-row">
+                    <button class="soft-btn" type="submit">Сохранить профиль</button>
+                    <button class="danger-btn" id="logoutButton" type="button">Выйти</button>
+                  </div>
                 </form>
               </section>
 
-              <section class="panel">
+              <section class="panel" data-admin-only>
                 <div class="panel-head">
                   <h3>Сессия</h3>
                   <button class="soft-btn" id="refreshTokenButton" type="button">Refresh</button>
@@ -197,9 +197,9 @@
               <section class="panel detail-panel">
                 <div class="panel-head">
                   <h3>Решение</h3>
-                  <button class="ghost-btn" id="loadTaskByIdButton" type="button" data-teacher-only>Открыть по ID</button>
+                  <button class="ghost-btn" id="loadTaskByIdButton" type="button" data-admin-only>Открыть по ID</button>
                 </div>
-                <label class="inline-field" data-teacher-only>
+                <label class="inline-field" data-admin-only>
                   ID задачи
                   <input id="taskLookupId" type="number" min="1" placeholder="1" />
                 </label>
@@ -218,6 +218,7 @@
                   </label>
                   <button class="primary-btn" type="submit">Отправить решение</button>
                 </form>
+                <div id="taskTests" class="item-list task-tests-list"></div>
               </section>
             </div>
           </section>
@@ -261,7 +262,7 @@
                   <h3>Редактор курса</h3>
                 </div>
                 <form id="courseForm" class="stack">
-                  <label>
+                  <label data-admin-only>
                     ID для обновления или удаления
                     <input name="course_id" type="number" min="1" placeholder="Оставь пустым для создания" />
                   </label>
@@ -284,10 +285,14 @@
 
             <section class="panel task-panel">
               <div class="panel-head">
-                <h3>Новая задача</h3>
+                <h3 id="taskEditorTitle">Новая задача</h3>
                 <button class="ghost-btn" id="addTestCaseButton" type="button">Добавить тест</button>
               </div>
               <form id="taskForm" class="stack">
+                <label data-admin-only>
+                  ID задачи для изменения или удаления
+                  <input name="task_id" type="number" min="1" placeholder="Оставь пустым для создания" />
+                </label>
                 <div class="form-grid">
                   <label>
                     Название
@@ -305,7 +310,12 @@
                   <textarea name="description" rows="5" required placeholder="Опиши входные данные, выходные данные и пример."></textarea>
                 </label>
                 <div id="testCasesEditor" class="testcase-list"></div>
-                <button class="primary-btn" type="submit">Создать задачу</button>
+                <div class="button-row">
+                  <button class="primary-btn" type="submit" data-task-action="create">Создать задачу</button>
+                  <button class="soft-btn" type="submit" data-task-action="update">Сохранить задачу</button>
+                  <button class="danger-btn" type="submit" data-task-action="delete" formnovalidate>Удалить задачу</button>
+                  <button class="ghost-btn" id="resetTaskFormButton" type="button">Новая</button>
+                </div>
               </form>
             </section>
           </section>
@@ -359,7 +369,7 @@
                   Группа
                   <input id="progressSearchGroup" type="text" placeholder="БИВТ-22-1" />
                 </label>
-                <label>
+                <label data-admin-only>
                   ID ученика
                   <input id="progressStudentId" type="number" min="1" placeholder="точный ID" />
                 </label>
@@ -383,5 +393,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="./app.js"></script>
+    <script type="module" src="./hologram.js"></script>
   </body>
 </html>

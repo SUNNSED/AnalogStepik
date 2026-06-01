@@ -21,6 +21,8 @@ const ROUTES = [
   { group: "Tasks", method: "GET", path: "/tasks/", label: "Все задачи" },
   { group: "Tasks", method: "GET", path: "/tasks/{task_id}", label: "Задача по ID" },
   { group: "Tasks", method: "POST", path: "/tasks/", label: "Создать задачу" },
+  { group: "Tasks", method: "PUT", path: "/tasks/{task_id}", label: "Обновить задачу" },
+  { group: "Tasks", method: "DELETE", path: "/tasks/{task_id}", label: "Удалить задачу" },
   { group: "Submissions", method: "POST", path: "/submissions/", label: "Отправить решение" },
   { group: "Submissions", method: "GET", path: "/submissions/{submission_id}", label: "Статус отправки" },
   { group: "Root", method: "GET", path: "/", label: "Health check" },
@@ -41,6 +43,7 @@ const state = {
   apiBase: localStorage.getItem("analogstepik.apiBase") || "http://localhost:8000",
   accessToken: localStorage.getItem("analogstepik.accessToken") || "",
   refreshToken: localStorage.getItem("analogstepik.refreshToken") || "",
+  theme: localStorage.getItem("analogstepik.theme") || "dark",
   profile: null,
   stats: null,
   courses: [],
@@ -93,8 +96,8 @@ function clearSession() {
 function setApiBase(value) {
   state.apiBase = value.replace(/\/+$/, "");
   localStorage.setItem("analogstepik.apiBase", state.apiBase);
-  $("#apiBaseAuth").value = state.apiBase;
-  $("#apiBaseApp").value = state.apiBase;
+  const apiBaseAuth = $("#apiBaseAuth");
+  if (apiBaseAuth) apiBaseAuth.value = state.apiBase;
 }
 
 async function api(path, options = {}, retry = true) {
@@ -193,8 +196,43 @@ function formatDate(value) {
 
 function statusBadge(status) {
   const normalized = String(status || "").toLowerCase();
-  const cls = normalized === "correct" ? "ok" : normalized === "pending" ? "warn" : "bad";
+  const cls = normalized === "correct"
+    ? "ok"
+    : normalized === "pending"
+      ? "idle"
+      : normalized.includes("wrong")
+        ? "warn"
+        : "bad";
   return `<span class="badge ${cls}">${escapeHtml(status || "-")}</span>`;
+}
+
+function isAdminUser() {
+  return Boolean(state.profile?.is_admin);
+}
+
+function adminOnlyHtml(html) {
+  return isAdminUser() ? html : "";
+}
+
+function progressBadge(status, label) {
+  const normalized = String(status || "").toLowerCase();
+  if (!normalized) return "";
+
+  const cls = normalized === "correct" || normalized === "complete"
+    ? "ok"
+    : normalized === "wrong" || normalized === "partial"
+      ? "warn"
+      : "idle";
+
+  const fallback = {
+    not_started: "не выполнено",
+    wrong: "выполнено неверно",
+    correct: "выполнено верно",
+    partial: "решен неполностью",
+    complete: "решен полностью",
+  }[normalized] || status;
+
+  return `<span class="badge ${cls}">${escapeHtml(label || fallback)}</span>`;
 }
 
 function renderSession() {
@@ -222,7 +260,7 @@ function renderProfile() {
   const html = profile
     ? `
       <div class="meta-row">
-        <span class="badge">ID ${profile.id}</span>
+        ${adminOnlyHtml(`<span class="badge">ID ${profile.id}</span>`)}
         <span class="badge ${profile.is_active ? "ok" : "bad"}">${profile.is_active ? "активен" : "заблокирован"}</span>
         <span class="badge ${profile.is_admin ? "bad" : profile.is_teacher ? "warn" : ""}">${profile.is_admin ? "admin" : profile.is_teacher ? "teacher" : "student"}</span>
       </div>
@@ -266,12 +304,15 @@ function renderCourses() {
           <h4>${escapeHtml(course.title)}</h4>
           <p>${escapeHtml(course.description)}</p>
         </div>
-        ${course.is_enrolled ? `<span class="badge ok">записан</span>` : `<span class="badge">доступен</span>`}
+        <div class="meta-row">
+          ${progressBadge(course.progress_status, course.progress_label)}
+          ${course.is_enrolled ? `<span class="badge ok">записан</span>` : `<span class="badge">доступен</span>`}
+        </div>
       </div>
-      <div class="meta-row">
+      ${isAdminUser() ? `<div class="meta-row">
         <span class="badge">ID ${course.id}</span>
         <span class="badge">teacher ${course.teacher_id}</span>
-      </div>
+      </div>` : ""}
     </article>
   `).join("") || empty(state.courseFilter === "my" ? "Ты пока не записан на курсы." : "Курсов пока нет.");
 }
@@ -284,7 +325,7 @@ function renderCreatedCourses() {
           <h4>${escapeHtml(course.title)}</h4>
           <p>${escapeHtml(course.description)}</p>
         </div>
-        <span class="badge">ID ${course.id}</span>
+        ${adminOnlyHtml(`<span class="badge">ID ${course.id}</span>`)}
       </div>
       <div class="button-row">
         <button class="soft-btn" type="button" data-fill-course="${course.id}">Редактировать</button>
@@ -296,7 +337,7 @@ function renderCreatedCourses() {
 }
 
 function renderTaskCourseOptions() {
-  const courses = state.createdCourses.length ? state.createdCourses : state.courses;
+  const courses = state.profile?.is_admin ? state.courses : state.createdCourses;
   const currentValue = $("#taskCourseSelect").value;
   $("#taskCourseSelect").innerHTML = `<option value="">Без курса</option>` + courses.map((course) =>
     `<option value="${course.id}">${escapeHtml(course.title)}</option>`
@@ -334,6 +375,34 @@ function renderTaskCourseFilter() {
   }
 }
 
+function canManageCourse(course) {
+  if (!course) return false;
+  if (state.profile?.is_admin) return true;
+  return Boolean(state.profile?.is_teacher && String(course.teacher_id) === String(state.profile.id));
+}
+
+function canManageTask(task) {
+  if (state.profile?.is_admin) return true;
+  if (!state.profile?.is_teacher) return false;
+  if (!task.course_id) return true;
+
+  const course = [...state.createdCourses, ...state.courses].find((item) => String(item.id) === String(task.course_id));
+  return course ? canManageCourse(course) : state.createdCourses.some((item) => String(item.id) === String(task.course_id));
+}
+
+function canSeeHiddenTaskTests(task) {
+  return canManageTask(task);
+}
+
+function getVisibleTaskTests(task) {
+  const tests = task?.test_cases || [];
+  return canSeeHiddenTaskTests(task) ? tests : tests.filter((test) => !test.is_hidden);
+}
+
+function getTaskTestsCount(task) {
+  return getVisibleTaskTests(task).length;
+}
+
 function renderCourseDetail() {
   const course = state.selectedCourse;
   if (!course) {
@@ -342,9 +411,11 @@ function renderCourseDetail() {
   }
 
   const tasks = course.tasks || [];
+  const canEditTasks = canManageCourse(course);
   $("#courseDetail").innerHTML = `
     <div class="meta-row">
-      <span class="badge">ID ${course.id}</span>
+      ${adminOnlyHtml(`<span class="badge">ID ${course.id}</span>`)}
+      ${progressBadge(course.progress_status, course.progress_label)}
       <span class="badge">${course.students_count ?? 0} студентов</span>
       ${course.is_enrolled ? `<span class="badge ok">записан</span>` : `<span class="badge">не записан</span>`}
     </div>
@@ -358,9 +429,15 @@ function renderCourseDetail() {
               <h4>${escapeHtml(task.title)}</h4>
               <p>${escapeHtml(shortText(task.description, 130))}</p>
             </div>
-            <span class="badge">${task.test_cases?.length || 0} тестов</span>
+            <div class="meta-row">
+              ${progressBadge(task.progress_status, task.progress_label)}
+              <span class="badge">${getTaskTestsCount(task)} тестов</span>
+            </div>
           </div>
-          <button class="soft-btn" type="button" data-open-task="${task.id}" data-view-target="tasks">Решать</button>
+          <div class="button-row">
+            <button class="soft-btn" type="button" data-open-task="${task.id}" data-view-target="tasks">Решать</button>
+            ${canEditTasks ? `<button class="ghost-btn" type="button" data-fill-task="${task.id}">Редактировать</button>` : ""}
+          </div>
         </article>
       `).join("") || empty("В курсе пока нет задач.")}
     </div>
@@ -380,11 +457,15 @@ function renderTasks() {
           <h4>${escapeHtml(task.title)}</h4>
           <p>${escapeHtml(shortText(task.description, 120))}</p>
         </div>
-        <span class="badge">ID ${task.id}</span>
+        <div class="meta-row">
+          ${progressBadge(task.progress_status, task.progress_label)}
+          ${adminOnlyHtml(`<span class="badge">ID ${task.id}</span>`)}
+        </div>
       </div>
       <div class="meta-row">
-        <span class="badge">курс ${task.course_id ?? "-"}</span>
-        <span class="badge">${task.test_cases?.length || 0} тестов</span>
+        ${adminOnlyHtml(`<span class="badge">курс ${task.course_id ?? "-"}</span>`)}
+        <span class="badge">${getTaskTestsCount(task)} тестов</span>
+        ${canManageTask(task) ? `<button class="ghost-btn" type="button" data-fill-task="${task.id}">Редактировать</button>` : ""}
       </div>
     </article>
   `).join("") || empty("В выбранном курсе пока нет задач.");
@@ -394,10 +475,12 @@ function renderTaskDetail() {
   const task = state.selectedTask;
   if (!task) {
     $("#taskDetail").innerHTML = `<p class="muted">Выбери задачу.</p>`;
+    $("#taskTests").innerHTML = "";
     $("#submissionForm").classList.add("is-hidden");
     return;
   }
 
+  const visibleTests = getVisibleTaskTests(task);
   $("#submissionForm").classList.remove("is-hidden");
   $("#submissionForm").elements.task_id.value = task.id;
   if ($("#taskLookupId")) {
@@ -406,30 +489,28 @@ function renderTaskDetail() {
 
   $("#taskDetail").innerHTML = `
     <div class="meta-row">
-      <span class="badge">ID ${task.id}</span>
-      <span class="badge">курс ${task.course_id ?? "-"}</span>
-      <span class="badge">${task.test_cases?.length || 0} тестов</span>
+      ${adminOnlyHtml(`<span class="badge">ID ${task.id}</span>`)}
+      ${adminOnlyHtml(`<span class="badge">курс ${task.course_id ?? "-"}</span>`)}
+      ${progressBadge(task.progress_status, task.progress_label)}
+      <span class="badge">${visibleTests.length} тестов</span>
     </div>
     <h3 class="detail-title">${escapeHtml(task.title)}</h3>
     <p class="description">${escapeHtml(task.description)}</p>
-    <div class="item-list">
-      ${(task.test_cases || []).map((test, index) => `
-        <article class="list-item">
-          <div class="list-item-head">
-            <h4>Тест ${index + 1}</h4>
-            ${test.is_hidden ? `<span class="badge warn">скрытый</span>` : `<span class="badge ok">открытый</span>`}
-          </div>
-          ${test.is_hidden ? `<p class="muted">Данные скрыты для ученика.</p>` : `
-            <pre class="result-box">stdin:
+  `;
+
+  $("#taskTests").innerHTML = visibleTests.map((test, index) => `
+    <article class="list-item task-test-card">
+      <div class="list-item-head">
+        <h4>Тест ${index + 1}</h4>
+        ${test.is_hidden ? `<span class="badge warn">скрытый</span>` : `<span class="badge ok">открытый</span>`}
+      </div>
+      <pre class="result-box compact-result"><span class="task-test-label">stdin</span>
 ${escapeHtml(test.input_data || "(пусто)")}
 
-expected:
+<span class="task-test-label">expected</span>
 ${escapeHtml(test.expected_output || "")}</pre>
-          `}
-        </article>
-      `).join("")}
-    </div>
-  `;
+    </article>
+  `).join("") || empty("Открытых тестов для этой задачи нет.");
 }
 
 function renderLocalSubmissions() {
@@ -437,8 +518,8 @@ function renderLocalSubmissions() {
     <article class="list-item ${String(item.id) === String(state.selectedSubmissionId) ? "is-selected" : ""}" aria-current="${String(item.id) === String(state.selectedSubmissionId) ? "true" : "false"}">
       <div class="list-item-head">
         <div>
-          <h4>Submission ${item.id}</h4>
-          <p>Задача ${item.task_id} · ${formatDate(item.created_at)}</p>
+          <h4>${isAdminUser() ? `Submission ${item.id}` : "Отправка"}</h4>
+          <p>${isAdminUser() ? `Задача ${item.task_id} · ` : ""}${formatDate(item.created_at)}</p>
         </div>
         ${statusBadge(item.status)}
       </div>
@@ -485,16 +566,35 @@ function renderProgressCourseDetail(course) {
     return `<p class="muted">У ученика нет подходящих записей на курсы.</p>`;
   }
 
+  const percent = Math.max(0, Math.min(100, Number(course.progress_percent) || 0));
+  const badgeClass = percent === 100 ? "ok" : percent > 0 ? "warn" : "idle";
+
   return `
-    <div class="progress-row">
-      <div>
-        <strong>${escapeHtml(course.title)}</strong>
-        <p class="muted">${course.solved_tasks}/${course.total_tasks} задач · ${course.submissions_count} отправок</p>
+    <div class="progress-course-card">
+      <div class="progress-course-head">
+        <div>
+          <span class="progress-label">Курс</span>
+          <strong>${escapeHtml(course.title)}</strong>
+        </div>
+        <span class="badge ${badgeClass}">${percent}%</span>
       </div>
-      <div class="progress-track" aria-label="Прогресс ${course.progress_percent}%">
-        <div class="progress-fill" style="width: ${Math.max(0, Math.min(100, course.progress_percent))}%"></div>
+      <div class="progress-metrics">
+        <div class="progress-metric">
+          <span>Решено</span>
+          <strong>${course.solved_tasks}</strong>
+        </div>
+        <div class="progress-metric">
+          <span>Всего задач</span>
+          <strong>${course.total_tasks}</strong>
+        </div>
+        <div class="progress-metric">
+          <span>Отправок</span>
+          <strong>${course.submissions_count}</strong>
+        </div>
       </div>
-      <span class="badge ${course.progress_percent === 100 ? "ok" : "warn"}">${course.progress_percent}%</span>
+      <div class="progress-track" aria-label="Прогресс ${percent}%">
+        <div class="progress-fill" style="width: ${percent}%"></div>
+      </div>
     </div>
   `;
 }
@@ -508,9 +608,12 @@ function renderProgressReports() {
         <div class="list-item-head">
           <div>
             <h4>${escapeHtml(report.user.email)}</h4>
-            <p class="muted">${escapeHtml([report.user.last_name, report.user.first_name].filter(Boolean).join(" ") || "Имя не заполнено")} · группа ${escapeHtml(report.user.group_number || "-")}</p>
+            <div class="progress-user-meta">
+              <span>${escapeHtml([report.user.last_name, report.user.first_name].filter(Boolean).join(" ") || "Имя не заполнено")}</span>
+              <span>группа ${escapeHtml(report.user.group_number || "-")}</span>
+            </div>
           </div>
-          <span class="badge">ID ${report.user.id}</span>
+          ${adminOnlyHtml(`<span class="badge">ID ${report.user.id}</span>`)}
         </div>
         <div class="progress-courses">
           <label>
@@ -530,11 +633,18 @@ function renderProgressReports() {
   }).join("") || empty("Ничего не найдено.");
 }
 
-function renderTestCasesEditor() {
+function renderTestCasesEditor(testCases = null) {
   const container = $("#testCasesEditor");
+  if (Array.isArray(testCases)) {
+    container.innerHTML = "";
+    testCases.forEach((test) => addTestCaseRow(test.input_data || "", test.expected_output || "", Boolean(test.is_hidden)));
+  }
+
   if (!container.children.length) {
     addTestCaseRow("", "", false);
   }
+
+  renumberTestCases();
 }
 
 function addTestCaseRow(input = "", output = "", hidden = false) {
@@ -562,6 +672,41 @@ function addTestCaseRow(input = "", output = "", hidden = false) {
     </label>
   `;
   $("#testCasesEditor").append(card);
+  renumberTestCases();
+}
+
+function renumberTestCases() {
+  $$("#testCasesEditor .testcase-card").forEach((card, index) => {
+    const label = card.querySelector(".testcase-head strong");
+    if (label) label.textContent = `Тест ${index + 1}`;
+  });
+}
+
+function collectTaskTestCases() {
+  return [...$("#testCasesEditor").children].map((card) => ({
+    input_data: card.querySelector("[data-test-input]").value,
+    expected_output: card.querySelector("[data-test-output]").value,
+    is_hidden: card.querySelector("[data-test-hidden]").checked,
+  })).filter((test) => test.expected_output.trim());
+}
+
+function resetTaskForm() {
+  const form = $("#taskForm");
+  form.reset();
+  form.elements.task_id.value = "";
+  $("#taskEditorTitle").textContent = "Новая задача";
+  $("#testCasesEditor").innerHTML = "";
+  renderTestCasesEditor();
+}
+
+function fillTaskForm(task) {
+  const form = $("#taskForm");
+  form.elements.task_id.value = task.id;
+  form.elements.title.value = task.title;
+  form.elements.description.value = task.description;
+  form.elements.course_id.value = task.course_id || "";
+  $("#taskEditorTitle").textContent = isAdminUser() ? `Редактирование задачи #${task.id}` : "Редактирование задачи";
+  renderTestCasesEditor(task.test_cases || []);
 }
 
 function empty(text) {
@@ -582,6 +727,15 @@ function buildQuery(params) {
   });
   const query = search.toString();
   return query ? `?${query}` : "";
+}
+
+function debounce(callback, delay = 180) {
+  let timer = null;
+
+  return (...args) => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => callback(...args), delay);
+  };
 }
 
 function handleCodeEditorTab(event) {
@@ -639,6 +793,8 @@ async function loadProfile() {
   state.profile = await api("/users/me");
   renderSession();
   renderProfile();
+  renderTaskCourseOptions();
+  renderTaskCourseFilter();
 }
 
 async function loadStats() {
@@ -723,6 +879,25 @@ async function openTask(id) {
   renderTaskDetail();
 }
 
+async function loadTaskIntoEditor(id) {
+  const existingTask =
+    state.tasks.find((task) => String(task.id) === String(id)) ||
+    state.selectedCourse?.tasks?.find((task) => String(task.id) === String(id));
+  const task = existingTask || await api(`/tasks/${id}`);
+  fillTaskForm(task);
+  switchView("teacher");
+  scrollTaskEditorIntoView();
+}
+
+function scrollTaskEditorIntoView() {
+  requestAnimationFrame(() => {
+    document.querySelector(".task-panel")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  });
+}
+
 async function loadSubmission(id) {
   const submission = await api(`/submissions/${id}`);
   state.selectedSubmissionId = submission.id;
@@ -757,6 +932,34 @@ async function pollSubmission(id) {
   return null;
 }
 
+function refreshViewData(name) {
+  if (!state.accessToken) return;
+
+  const refreshers = {
+    dashboard: async () => {
+      await Promise.all([loadProfile(), loadStats()]);
+    },
+    courses: loadCourses,
+    tasks: loadTasks,
+    submissions: async () => {
+      renderLocalSubmissions();
+    },
+    teacher: async () => {
+      await Promise.all([loadCourses(), loadCreatedCourses()]);
+    },
+    progress: loadProgressReports,
+    users: loadUsers,
+    routes: async () => {
+      renderRoutes();
+    },
+  };
+
+  const refresher = refreshers[name];
+  if (refresher) {
+    runAction(refresher, "");
+  }
+}
+
 function switchView(name) {
   const isAdmin = Boolean(state.profile?.is_admin);
   const isTeacher = Boolean(state.profile?.is_teacher || isAdmin);
@@ -774,6 +977,7 @@ function switchView(name) {
   const [eyebrow, title] = viewMeta[name] || viewMeta.dashboard;
   $("#viewEyebrow").textContent = eyebrow;
   $("#viewTitle").textContent = title;
+  refreshViewData(name);
 }
 
 async function loadInitialData() {
@@ -787,8 +991,12 @@ async function loadInitialData() {
 }
 
 function wireEvents() {
-  $("#apiBaseAuth").addEventListener("change", (event) => setApiBase(event.target.value));
-  $("#apiBaseApp").addEventListener("change", (event) => setApiBase(event.target.value));
+  const apiBaseAuth = $("#apiBaseAuth");
+  if (apiBaseAuth) {
+    apiBaseAuth.addEventListener("change", (event) => setApiBase(event.target.value));
+  }
+
+  $("#themeToggle").addEventListener("click", toggleTheme);
 
   $$("[data-auth-tab]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -834,7 +1042,8 @@ function wireEvents() {
 
   $("#registerForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const registerForm = event.currentTarget;
+    const form = new FormData(registerForm);
     const email = form.get("email");
     const password = form.get("password");
     try {
@@ -857,7 +1066,8 @@ function wireEvents() {
       });
 
       saveSession(tokens);
-      event.currentTarget.reset();
+      registerForm.reset();
+      renderSession();
       showToast("Аккаунт создан, вход выполнен");
       await loadInitialData();
     } catch (error) {
@@ -907,6 +1117,27 @@ function wireEvents() {
   $("#loadUsersButton").addEventListener("click", () => runAction(loadUsers, "Пользователи загружены"));
   $("#loadProgressButton").addEventListener("click", () => runAction(loadProgressReports, "Прогресс загружен"));
 
+  const liveUsersSearch = debounce(() => {
+    if ($("#view-users")?.classList.contains("is-active") && state.profile?.is_admin) {
+      runAction(loadUsers, "");
+    }
+  });
+
+  ["#userSearchQuery", "#userSearchGroup"].forEach((selector) => {
+    $(selector)?.addEventListener("input", liveUsersSearch);
+  });
+
+  const liveProgressSearch = debounce(() => {
+    const canViewProgress = Boolean(state.profile?.is_teacher || state.profile?.is_admin);
+    if ($("#view-progress")?.classList.contains("is-active") && canViewProgress) {
+      runAction(loadProgressReports, "");
+    }
+  });
+
+  ["#progressSearchQuery", "#progressSearchGroup", "#progressStudentId"].forEach((selector) => {
+    $(selector)?.addEventListener("input", liveProgressSearch);
+  });
+
   $("#enrollButton").addEventListener("click", () => runAction(async () => {
     if (!state.selectedCourse) throw new Error("Сначала выбери курс");
     await api(`/courses/${state.selectedCourse.id}/enroll`, { method: "POST" });
@@ -945,7 +1176,9 @@ function wireEvents() {
       switchView("submissions");
       $("#submissionResult").textContent = JSON.stringify(submission, null, 2);
       await pollSubmission(submission.id);
-      await loadStats();
+      await Promise.all([loadStats(), loadCourses()]);
+      if (state.selectedTaskCourseId) await loadTasks();
+      if (state.selectedCourse) await openCourse(state.selectedCourse.id);
     }, "Решение отправлено");
   });
 
@@ -964,15 +1197,18 @@ function wireEvents() {
 
   $("#courseForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const courseForm = event.currentTarget;
     const submitter = event.submitter;
     const action = submitter?.dataset.courseAction || "create";
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(courseForm);
     const id = form.get("course_id");
     let createdCourseId = null;
+    let affectedCourseId = id;
     runAction(async () => {
       if (action === "delete") {
         if (!id) throw new Error("Укажи ID курса");
         await api(`/courses/${id}`, { method: "DELETE" });
+        affectedCourseId = null;
       } else if (action === "update") {
         if (!id) throw new Error("Укажи ID курса");
         await api(`/courses/${id}`, {
@@ -991,55 +1227,102 @@ function wireEvents() {
           },
         });
         createdCourseId = createdCourse.id;
+        affectedCourseId = createdCourse.id;
       }
-      event.currentTarget.reset();
+      courseForm.reset();
       await Promise.all([loadCourses(), loadCreatedCourses()]);
+
+      if (action === "delete") {
+        if (state.selectedCourse && String(state.selectedCourse.id) === String(id)) {
+          state.selectedCourse = null;
+          renderCourseDetail();
+        }
+
+        if (String(state.selectedTaskCourseId) === String(id)) {
+          state.selectedTaskCourseId = "";
+          state.selectedTask = null;
+          state.selectedTaskId = null;
+          renderTaskCourseFilter();
+        }
+
+        await loadTasks();
+        return;
+      }
+
       if (createdCourseId) {
         $("#taskCourseSelect").value = String(createdCourseId);
+        state.selectedTaskCourseId = String(createdCourseId);
+        renderTaskCourseFilter();
       }
+
+      if (affectedCourseId) {
+        await openCourse(affectedCourseId);
+      }
+
       await loadTasks();
     }, action === "delete" ? "Курс удалён" : action === "create" ? "Курс создан и выбран для задачи" : "Курс сохранён", submitter);
   });
 
   $("#addTestCaseButton").addEventListener("click", () => addTestCaseRow());
+  $("#resetTaskFormButton").addEventListener("click", resetTaskForm);
 
   $("#taskForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const submitter = event.submitter;
+    const action = submitter?.dataset.taskAction || "create";
     const form = new FormData(event.currentTarget);
     runAction(async () => {
+      const taskId = form.get("task_id");
+
+      if (action === "delete") {
+        if (!taskId) throw new Error("Укажи ID задачи");
+        await api(`/tasks/${taskId}`, { method: "DELETE" });
+        if (String(state.selectedTaskId) === String(taskId)) {
+          state.selectedTask = null;
+          state.selectedTaskId = null;
+          renderTaskDetail();
+        }
+        resetTaskForm();
+        await loadTasks();
+        if (state.selectedCourse) await openCourse(state.selectedCourse.id);
+        return;
+      }
+
       const courseId = form.get("course_id");
       if (!courseId) {
         throw new Error("Выбери курс для задачи");
       }
 
-      const testCases = [...$("#testCasesEditor").children].map((card) => ({
-        input_data: card.querySelector("[data-test-input]").value,
-        expected_output: card.querySelector("[data-test-output]").value,
-        is_hidden: card.querySelector("[data-test-hidden]").checked,
-      })).filter((test) => test.expected_output.trim());
+      if (action === "update" && !taskId) {
+        throw new Error("Укажи ID задачи для сохранения");
+      }
+
+      const testCases = collectTaskTestCases();
 
       if (!testCases.length) throw new Error("Добавь хотя бы один тест");
 
-      const createdTask = await api("/tasks/", {
-        method: "POST",
+      const payload = {
+        title: form.get("title"),
+        description: form.get("description"),
+        course_id: Number(courseId),
+        test_cases: testCases,
+      };
+
+      const savedTask = await api(action === "update" ? `/tasks/${taskId}` : "/tasks/", {
+        method: action === "update" ? "PUT" : "POST",
         body: {
-          title: form.get("title"),
-          description: form.get("description"),
-          course_id: Number(courseId),
-          test_cases: testCases,
+          ...payload,
         },
       });
 
-      event.currentTarget.reset();
-      $("#testCasesEditor").innerHTML = "";
-      renderTestCasesEditor();
-      state.selectedTaskCourseId = String(courseId);
+      fillTaskForm(savedTask);
+      state.selectedTaskCourseId = String(savedTask.course_id || courseId);
       renderTaskCourseFilter();
       await loadTasks();
-      await openTask(createdTask.id);
+      await openTask(savedTask.id);
+      if (state.selectedCourse) await openCourse(state.selectedCourse.id);
       switchView("tasks");
-    }, "Задача создана и открыта", submitter);
+    }, action === "delete" ? "Задача удалена" : action === "update" ? "Задача сохранена" : "Задача создана и открыта", submitter);
   });
 
   $("#loadUserButton").addEventListener("click", () => runAction(async () => {
@@ -1080,6 +1363,7 @@ function wireEvents() {
   });
 
   document.body.addEventListener("keydown", (event) => {
+    if (event.target.closest("[data-fill-task]")) return;
     const taskCard = event.target.closest("[data-open-task]");
 
     if (taskCard && (event.key === "Enter" || event.key === " ")) {
@@ -1097,7 +1381,13 @@ function wireEvents() {
     const openUserButton = event.target.closest("[data-open-user]");
     const deleteUserButton = event.target.closest("[data-delete-user]");
     const fillCourseButton = event.target.closest("[data-fill-course]");
+    const fillTaskButton = event.target.closest("[data-fill-task]");
     const removeTestButton = event.target.closest("[data-remove-test]");
+
+    if (fillTaskButton) {
+      runAction(() => loadTaskIntoEditor(fillTaskButton.dataset.fillTask), "Задача загружена в редактор");
+      return;
+    }
 
     if (openCourseButton) {
       const target = openCourseButton.dataset.viewTarget;
@@ -1160,6 +1450,7 @@ function wireEvents() {
     if (removeTestButton) {
       removeTestButton.closest(".testcase-card").remove();
       if (!$("#testCasesEditor").children.length) addTestCaseRow();
+      renumberTestCases();
     }
   });
 }
@@ -1194,7 +1485,22 @@ async function runAction(action, successMessage, source) {
   }
 }
 
+function applyTheme() {
+  if (state.theme === "light") {
+    document.documentElement.classList.add("theme-light");
+  } else {
+    document.documentElement.classList.remove("theme-light");
+  }
+}
+
+function toggleTheme() {
+  state.theme = state.theme === "light" ? "dark" : "light";
+  localStorage.setItem("analogstepik.theme", state.theme);
+  applyTheme();
+}
+
 function init() {
+  applyTheme();
   setApiBase(state.apiBase);
   wireEvents();
   renderSession();

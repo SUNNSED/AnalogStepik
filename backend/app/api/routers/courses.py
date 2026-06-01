@@ -1,3 +1,4 @@
+from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
@@ -5,11 +6,142 @@ from sqlalchemy.orm import selectinload
 from typing import List
 
 from app.db.database import get_db
-from app.db.models import Course, User, Enrollment, Task
+from app.db.models import Course, User, Enrollment, Task, Submission
 from app.schemas.course import CourseCreate, CourseUpdate, CourseResponse, CourseDetailResponse
 from app.api.deps import get_current_user, get_current_teacher
 
 router = APIRouter(prefix="/courses", tags=["Courses"])
+
+
+TASK_PROGRESS_LABELS = {
+    "not_started": "не выполнено",
+    "wrong": "выполнено неверно",
+    "correct": "выполнено верно",
+}
+
+COURSE_PROGRESS_LABELS = {
+    "not_started": "нерешен",
+    "partial": "решен неполностью",
+    "complete": "решен полностью",
+}
+
+
+def resolve_task_progress(statuses: list[str]) -> tuple[str, str]:
+    normalized = [str(status or "").lower() for status in statuses]
+
+    if "correct" in normalized:
+        return "correct", TASK_PROGRESS_LABELS["correct"]
+
+    if statuses:
+        return "wrong", TASK_PROGRESS_LABELS["wrong"]
+
+    return "not_started", TASK_PROGRESS_LABELS["not_started"]
+
+
+def resolve_course_progress(
+    task_ids: list[int],
+    progress_map: dict[int, tuple[str, str]],
+) -> tuple[str, str]:
+    if not task_ids:
+        return "not_started", COURSE_PROGRESS_LABELS["not_started"]
+
+    statuses = [
+        progress_map.get(task_id, ("not_started", TASK_PROGRESS_LABELS["not_started"]))[0]
+        for task_id in task_ids
+    ]
+
+    if statuses and all(status == "correct" for status in statuses):
+        return "complete", COURSE_PROGRESS_LABELS["complete"]
+
+    if any(status != "not_started" for status in statuses):
+        return "partial", COURSE_PROGRESS_LABELS["partial"]
+
+    return "not_started", COURSE_PROGRESS_LABELS["not_started"]
+
+
+async def get_task_progress_map(
+    db: AsyncSession,
+    current_user: User,
+    task_ids: list[int],
+) -> dict[int, tuple[str, str]]:
+    if not task_ids:
+        return {}
+
+    result = await db.execute(
+        select(Submission.task_id, Submission.status).where(
+            Submission.user_id == current_user.id,
+            Submission.task_id.in_(task_ids),
+        )
+    )
+
+    statuses_by_task: dict[int, list[str]] = defaultdict(list)
+    for task_id, status_value in result.all():
+        statuses_by_task[task_id].append(status_value)
+
+    return {
+        task_id: resolve_task_progress(statuses_by_task.get(task_id, []))
+        for task_id in task_ids
+    }
+
+
+async def annotate_courses_with_progress(
+    db: AsyncSession,
+    current_user: User,
+    courses: list[Course],
+) -> None:
+    if not courses:
+        return
+
+    course_ids = [course.id for course in courses]
+    tasks_result = await db.execute(
+        select(Task.id, Task.course_id).where(Task.course_id.in_(course_ids))
+    )
+
+    task_ids: list[int] = []
+    tasks_by_course: dict[int, list[int]] = defaultdict(list)
+    for task_id, course_id in tasks_result.all():
+        task_ids.append(task_id)
+        tasks_by_course[course_id].append(task_id)
+
+    progress_map = await get_task_progress_map(db, current_user, task_ids)
+
+    for course in courses:
+        progress = resolve_course_progress(tasks_by_course.get(course.id, []), progress_map)
+        course.progress_status = progress[0]
+        course.progress_label = progress[1]
+
+
+def task_payload_for_course(
+    task: Task,
+    include_hidden_tests: bool,
+    progress: tuple[str, str] | None = None,
+) -> dict:
+    test_cases = task.test_cases if include_hidden_tests else [
+        test for test in task.test_cases if not test.is_hidden
+    ]
+
+    payload = {
+        "id": task.id,
+        "title": task.title,
+        "description": task.description,
+        "test_cases": [
+            {
+                "id": test.id,
+                "input_data": test.input_data,
+                "expected_output": test.expected_output,
+                "is_hidden": test.is_hidden,
+            }
+            for test in test_cases
+        ],
+        "course_id": task.course_id,
+        "created_at": task.created_at,
+    }
+
+    if progress:
+        payload["progress_status"] = progress[0]
+        payload["progress_label"] = progress[1]
+
+    return payload
 
 
 # ========== ЭНДПОИНТЫ ДЛЯ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ ==========
@@ -39,6 +171,8 @@ async def list_courses(
     for course in courses:
         course.is_enrolled = course.id in enrolled_ids
 
+    await annotate_courses_with_progress(db, current_user, courses)
+
     return courses
 
 
@@ -59,6 +193,8 @@ async def get_my_courses(
     for course in courses:
         course.is_enrolled = True
 
+    await annotate_courses_with_progress(db, current_user, courses)
+
     return courses
 
 
@@ -72,7 +208,9 @@ async def get_my_created_courses(
     result = await db.execute(
         select(Course) if current_user.is_admin else select(Course).where(Course.teacher_id == current_user.id)
     )
-    return result.scalars().all()
+    courses = result.scalars().all()
+    await annotate_courses_with_progress(db, current_user, courses)
+    return courses
 
 
 @router.get("/{course_id}", response_model=CourseDetailResponse)
@@ -96,7 +234,7 @@ async def get_course(
         .where(Task.course_id == course_id)
         .options(selectinload(Task.test_cases))
     )
-    course.tasks = tasks_result.scalars().all()
+    tasks = tasks_result.scalars().all()
 
     # Получаем количество студентов
     count_result = await db.execute(
@@ -110,9 +248,32 @@ async def get_course(
             and_(Enrollment.user_id == current_user.id, Enrollment.course_id == course_id)
         )
     )
-    course.is_enrolled = enrolled_result.scalar_one_or_none() is not None
+    is_enrolled = enrolled_result.scalar_one_or_none() is not None
+    include_hidden_tests = current_user.is_admin or (
+        current_user.is_teacher and course.teacher_id == current_user.id
+    )
+    progress_map = await get_task_progress_map(db, current_user, [task.id for task in tasks])
+    course_progress = resolve_course_progress([task.id for task in tasks], progress_map)
 
-    return course
+    return {
+        "id": course.id,
+        "title": course.title,
+        "description": course.description,
+        "teacher_id": course.teacher_id,
+        "created_at": course.created_at,
+        "is_enrolled": is_enrolled,
+        "progress_status": course_progress[0],
+        "progress_label": course_progress[1],
+        "students_count": course.students_count,
+        "tasks": [
+            task_payload_for_course(
+                task,
+                include_hidden_tests=include_hidden_tests,
+                progress=progress_map.get(task.id),
+            )
+            for task in tasks
+        ],
+    }
 
 
 # ========== ЭНДПОИНТЫ ДЛЯ ЗАПИСИ НА КУРС ==========

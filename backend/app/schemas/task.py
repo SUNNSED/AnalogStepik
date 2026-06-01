@@ -31,6 +31,8 @@ class TaskResponse(BaseModel):
     description: str
     test_cases: List[TestCaseResponse] # При возврате задачи тоже отдаем список тестов
     course_id: Optional[int] = None
+    progress_status: Optional[str] = None
+    progress_label: Optional[str] = None
     created_at: datetime
 
     class Config:

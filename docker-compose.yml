@@ -40,6 +40,7 @@ services:
     depends_on:
       - db
       - rabbitmq
+      - redis
     volumes:
       - ./backend:/app
       - /var/run/docker.sock:/var/run/docker.sock
@@ -49,7 +50,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: always
-    command: celery -A app.core.celery_app worker --loglevel=info -P solo
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=5
     env_file:
       - ./backend/.env
     environment:
@@ -59,6 +60,7 @@ services:
     depends_on:
       - db
       - rabbitmq
+      - redis
     volumes:
       - ./backend:/app
       - /var/run/docker.sock:/var/run/docker.sock
