@@ -39,8 +39,16 @@ const viewMeta = {
   routes: ["API", "Карта backend-роутов"],
 };
 
+function defaultApiBase() {
+  const host = window.location.hostname;
+  if (host === "localhost" || host === "127.0.0.1") {
+    return "http://localhost:8000";
+  }
+  return window.location.origin;
+}
+
 const state = {
-  apiBase: localStorage.getItem("analogstepik.apiBase") || "http://localhost:8000",
+  apiBase: localStorage.getItem("analogstepik.apiBase") || defaultApiBase(),
   accessToken: localStorage.getItem("analogstepik.accessToken") || "",
   refreshToken: localStorage.getItem("analogstepik.refreshToken") || "",
   theme: localStorage.getItem("analogstepik.theme") || "dark",
@@ -1102,7 +1110,7 @@ function wireEvents() {
   $("#refreshProfileButton").addEventListener("click", () => runAction(loadInitialData, "Данные обновлены"));
   $("#refreshTokenButton").addEventListener("click", () => runAction(refreshTokens, "Токены обновлены"));
   $("#healthButton").addEventListener("click", () => runAction(async () => {
-    $("#healthResult").textContent = JSON.stringify(await api("/", { auth: false }), null, 2);
+    $("#healthResult").textContent = JSON.stringify(await api("/openapi.json", { auth: false }), null, 2);
   }, "API отвечает"));
 
   $("#loadCoursesButton").addEventListener("click", () => runAction(loadCourses, "Курсы обновлены"));
