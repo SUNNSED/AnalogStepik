@@ -21,6 +21,8 @@ class CourseResponse(BaseModel):
     teacher_id: int
     created_at: datetime
     is_enrolled: Optional[bool] = False
+    progress_status: Optional[str] = None
+    progress_label: Optional[str] = None
 
     class Config:
         from_attributes = True

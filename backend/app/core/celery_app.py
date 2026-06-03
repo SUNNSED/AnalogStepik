@@ -1,11 +1,12 @@
-import os
 from celery import Celery
+
 from app.core.config import settings
+
 
 celery_app = Celery(
     "worker",
     broker=settings.CELERY_BROKER_URL,
-    backend="rpc://" # Для получения результатов, если нужно
+    backend=settings.CELERY_RESULT_BACKEND,
 )
 
 celery_app.conf.update(
@@ -14,6 +15,12 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    # Включаем авто-обнаружение тасок в модулях
-    imports=["app.worker.tasks"]
+    task_track_started=True,
+    task_soft_time_limit=70,
+    task_time_limit=75,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    result_expires=60 * 60 * 24,
+    worker_prefetch_multiplier=1,
+    imports=["app.worker.tasks"],
 )
